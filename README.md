@@ -1,63 +1,215 @@
-# app_ielts
+# IELTS LMS Backend
 
-## Project Overview
-This project is an Express.js application designed to provide a platform for IELTS preparation resources and tools.
+Backend API for the IELTS Learning Management System (LMS), built with **Node.js**, **Express.js**, and **MongoDB**. The system provides authentication, course management, lesson management, assignments, submissions, and AI-ready APIs for IELTS learning.
 
-## Directory Structure
+---
+
+## Technologies
+
+- Node.js
+- Express.js
+- MongoDB
+- Mongoose
+- JWT Authentication
+- bcrypt
+- Multer
+- dotenv
+- CORS
+
+---
+
+## Features
+
+### Authentication
+
+- User Registration
+- User Login
+- JWT Authentication
+- Role Authorization (Admin/User)
+- User Profile
+
+### Course Management
+
+- Create Course
+- Update Course
+- Get Course
+- Delete Course
+
+### Lesson Management
+
+- Create Lesson
+- Update Lesson
+- Lesson Details
+- Get Lessons by Course
+
+### Assignment
+
+- Create Assignment
+- Update Assignment
+- Get Assignment
+- Delete Assignment
+
+### Submission
+
+- Submit Assignment
+- View Submission
+- Teacher Review
+- AI Review (Future)
+
+---
+
+## Project Structure
+
 ```
-app_ielts
-├── src
-│   ├── app.js
-│   ├── server.js
-│   ├── controllers
-│   │   └── index.js
-│   ├── models
-│   │   └── index.js
-│   ├── routes
-│   │   └── index.js
-│   └── config
-│       └── index.js
-├── .env
-├── package.json
-└── README.md
+src
+│
+├── auth
+│
+├── config
+│
+├── middlewares
+│
+├── modules
+│   ├── Auth
+│   ├── LMS
+│   │   ├── Course
+│   │   ├── Lesson
+│   │   ├── Assignment
+│   │   └── Submission
+│   └── ...
+│
+├── routes
+│
+├── utils
+│
+├── app.js
+└── server.js
 ```
+
+---
 
 ## Installation
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   ```
-2. Navigate to the project directory:
-   ```
-   cd app_ielts
-   ```
-3. Install the dependencies:
-   ```
-   npm install
-   ```
+
+Clone the project
+
+```bash
+git clone https://github.com/your-username/app_ielts.git
+```
+
+Move into the project
+
+```bash
+cd app_ielts
+```
+
+Install packages
+
+```bash
+npm install
+```
+
+---
 
 ## Environment Variables
-Create a `.env` file in the root directory and add the necessary environment variables. Example:
-```
+
+Create a `.env` file in the project root.
+
+Example
+
+```env
 PORT=3000
-DATABASE_URL=<your-database-url>
+
+JWT_SECRET=your_secret_key
+
+MONGODB_URI=your_mongodb_connection_string
 ```
 
-## Running the Application
-To start the application in development mode, use:
-```
+> **Do not commit your `.env` file to GitHub.**
+
+---
+
+## Run Project
+
+Development
+
+```bash
 npm run dev
 ```
-For production mode, use:
-```
+
+Production
+
+```bash
 npm start
 ```
 
-## Usage
-Access the application by navigating to `http://localhost:3000` in your web browser.
+Server
 
-## Contributing
-Contributions are welcome! Please submit a pull request or open an issue for any suggestions or improvements.
+```
+http://localhost:3000
+```
+
+---
+
+## API
+
+Example
+
+```
+POST   /api/auth/login
+
+POST   /api/auth/register
+
+GET    /api/courses/get-all
+
+POST   /api/courses/create
+
+PUT    /api/courses/update/:id
+
+GET    /api/lessons/course/:courseId
+```
+
+---
+
+## Authentication
+
+Protected APIs require a JWT token.
+
+Example
+
+```
+Authorization: Bearer your_token
+```
+
+---
+
+## Git Ignore
+
+Never upload the following files:
+
+```
+.env
+
+node_modules/
+
+uploads/
+
+logs/
+
+*.log
+```
+
+---
+
+## Future Features
+
+- IELTS AI Writing Scoring
+- IELTS AI Speaking Scoring
+- Payment Integration
+- Certificate Generation
+- Student Progress Dashboard
+
+---
 
 ## License
-This project is licensed under the ISC License.
+
+This project is for educational purposes.

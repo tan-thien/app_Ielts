@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { createAssignmentController, updateAssignmentController, getAssignmentController, getAssignmentByIdController, deleteAssignmentController } = require('./assignment.controller');
+const { createAssignmentController, updateAssignmentController, getAssignmentController, 
+        getAssignmentByIdController, deleteAssignmentController } = require('./assignment.controller');
 const { authenticate } = require('../../../middlewares/auth.middleware');
 const { authorize } = require('../../../middlewares/authorize.middleware');
 
