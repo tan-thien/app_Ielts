@@ -1,19 +1,17 @@
 const { get } = require('mongoose');
 const getLessonModel = require('../lesson/lesson.model');
 const getLessonDetailModel = require('../lesson/lesson_detail.model');
-const getCourseModel = require('../Course/Course.model');
-const getUserModel = require('../../auth/Account.model');
-const { authorize } = require('../../../middlewares/authorize.middleware');
+
 
 const createLesson = async (data) => {
     const Lesson = getLessonModel();
+    const LessonDetail = getLessonDetailModel();
 
-
-    for (const field of requiredFields) {
-        if (data[field] === undefined || data[field] === null) {
-            throw new Error(`${field} is required`);
-        }
-    }
+    // for (const field of requiredFields) {
+    //     if (data[field] === undefined || data[field] === null) {
+    //         throw new Error(`${field} is required`);
+    //     }
+    // }
 
     const lesson = await Lesson.create({
         Name: data.Name,
@@ -35,7 +33,7 @@ const createLesson = async (data) => {
             FileUrl: item.FileUrl ?? "",
             Thumbnail: item.Thumbnail ?? "",
             Duration: item.Duration ?? 0,
-            Order: item.Order ?? index + 1
+            Oder: item.Oder ?? index + 1
         }));
 
         await LessonDetail.insertMany(details);
@@ -46,41 +44,67 @@ const createLesson = async (data) => {
 
 const getLessonById = async (id) => {
     const Lesson = getLessonModel();
-    const lesson = await Lesson.findById(id).populate('CourseID').populate('UserCreate');
+    const LessonDetail = getLessonDetailModel();
+    const lesson = await Lesson.findById(id).populate({path:'CourseID', model: getCourseModel()}).populate({path:'UserCreate', model: getUserModel()});
     if (!lesson) {
         throw new Error('Lesson not found');
     }   
-    return lesson;
+    const details = await LessonDetail.find({ LessonID: id }).sort({ Order: 1 });
+    lesson.Details = details;   
+    return {Lesson: lesson, Details: details };
 };
 
 const getAllLessons = async () => {
     const Lesson = getLessonModel();
-    const lessons = await Lesson.find().populate('CourseID').populate('UserCreate');
+    const lessons = await Lesson.find().populate({path:'CourseID', model: getCourseModel()}).populate({path:'UserCreate', model: getUserModel()});
     return lessons;
 }
 const getLessonByCourseId = async (courseId) => {
     const Lesson = getLessonModel();
-    const lessons = await Lesson.find({ CourseID: courseId }).populate('CourseID').populate('UserCreate');
+    const lessons = await Lesson.find({ CourseID: courseId }).populate({path:'CourseID', model: getCourseModel()}).populate({path:'UserCreate', model: getUserModel()});
     return lessons;
 }
 
 const updateLesson = async (id, data) => {
     const Lesson = getLessonModel();
     const LessonDetail = getLessonDetailModel();
-    const lesson = await Lesson.findByIdAndUpdate(id, data, { new: true });
+
+    const lesson = await Lesson.findByIdAndUpdate(id,
+        {
+            Name: data.Name,
+            Description: data.Description,
+            Time: data.Time,
+            Unit: data.Unit,
+            CourseID: data.CourseID,
+            Status: data.Status,
+            IsOpen: data.IsOpen,
+            IsDeleted: data.IsDeleted
+        },
+        { new: true }
+    );
+
     if (!lesson) {
-        throw new Error('Lesson not found');
+        throw new Error("Lesson not found");
     }
+
+    await LessonDetail.deleteMany({LessonID: id});
+
     const details = data.Details || [];
     for (const detail of details) {
-        if (detail._id) {
-            await LessonDetail.findByIdAndUpdate(detail._id, detail);
-        } else {
-            await LessonDetail.create({ ...detail, LessonID: lesson._id });
-        }
+        await LessonDetail.create({
+            LessonID: id,
+            Title: detail.Title,
+            Content: detail.Content,
+            Type: detail.Type,
+            FileUrl: detail.FileUrl,
+            Oder: detail.Oder ?? 0,
+            Duration: detail.Duration ?? 0,
+            Status: detail.Status ?? true
+        });
     }
-    
+
     return lesson;
-}
+};
+
 
 module.exports = { createLesson, getLessonById, getAllLessons, getLessonByCourseId, updateLesson };
