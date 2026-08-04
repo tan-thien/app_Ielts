@@ -1,7 +1,8 @@
 const { get } = require('mongoose');
 const getLessonModel = require('../lesson/lesson.model');
 const getLessonDetailModel = require('../lesson/lesson_detail.model');
-
+const getCourseModel = require('../Course/Course.model');
+const getUserModel = require('../../auth/Account.model');
 
 const createLesson = async (data) => {
     const Lesson = getLessonModel();
@@ -106,5 +107,32 @@ const updateLesson = async (id, data) => {
     return lesson;
 };
 
+const deleteLesson = async (id) => {
 
-module.exports = { createLesson, getLessonById, getAllLessons, getLessonByCourseId, updateLesson };
+    const Lesson = getLessonModel();
+    const LessonDetail = getLessonDetailModel();
+
+    await LessonDetail.deleteMany({
+        LessonID: id
+    });
+
+    const lesson = await Lesson.findByIdAndDelete(id);
+
+    if (!lesson) {
+        throw new Error("Lesson not found");
+    }
+
+    return lesson;
+};
+
+module.exports = {
+    createLesson,
+    getLessonById,
+    getAllLessons,
+    getLessonByCourseId,
+    updateLesson,
+    deleteLesson
+};
+
+
+module.exports = { createLesson, getLessonById, getAllLessons, getLessonByCourseId, updateLesson, deleteLesson };
