@@ -28,13 +28,9 @@ const createLesson = async (data) => {
 
         const details = data.Details.map((item, index) => ({
             LessonID: lesson._id,
-            Title: item.Title,
             Type: item.Type,
             Content: item.Content ?? "",
             FileUrl: item.FileUrl ?? "",
-            Thumbnail: item.Thumbnail ?? "",
-            Duration: item.Duration ?? 0,
-            Oder: item.Oder ?? index + 1
         }));
 
         await LessonDetail.insertMany(details);
@@ -94,13 +90,9 @@ const updateLesson = async (id, data) => {
     for (const detail of details) {
         await LessonDetail.create({
             LessonID: id,
-            Title: detail.Title,
             Content: detail.Content,
             Type: detail.Type,
             FileUrl: detail.FileUrl,
-            Oder: detail.Oder ?? 0,
-            Duration: detail.Duration ?? 0,
-            Status: detail.Status ?? true
         });
     }
 

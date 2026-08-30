@@ -6,13 +6,9 @@ const createDetail = async (data) => {
 
     return await LessonDetail.create({
         LessonID: data.LessonID,
-        Title: data.Title,
         Content: data.Content,
         Type: data.Type,
         FileUrl: data.FileUrl,
-        Thumbnail: data.Thumbnail,
-        Duration: data.Duration,
-        Oder: data.Oder,
         Status: data.Status
     });
 
@@ -32,7 +28,7 @@ const getByLesson = async (lessonId) => {
 
     return await LessonDetail
         .find({ LessonID: lessonId })
-        .sort({ Oder: 1 });
+        .sort({ Order: 1 });
 
 };
 
