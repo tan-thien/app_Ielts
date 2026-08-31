@@ -12,13 +12,11 @@ const createCourse = async (data) => {
         'Time',
         'Thumbnail'
     ];
-
     for (const field of requiredFields) {
         if (data[field] === undefined || data[field] === null) {
             throw new Error(`${field} is required`);
         }
     }
-
     const course = await Course.create({
         Name: data.Name,
         Description: data.Description,
@@ -54,11 +52,9 @@ const updateCourse = async (id, data) => {
             new: true
         }
     );
-
     if (!course) {
         throw new Error('Course not found');
     }
-
     return course;
 };
 const getAllCourse = async () => {

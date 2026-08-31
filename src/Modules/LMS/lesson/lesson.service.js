@@ -1,7 +1,8 @@
 const { get } = require('mongoose');
 const getLessonModel = require('../lesson/lesson.model');
 const getLessonDetailModel = require('../lesson/lesson_detail.model');
-
+const getCourseModel = require('../Course/Course.model');
+const getUserModel = require('../../auth/Account.model');
 
 const createLesson = async (data) => {
     const Lesson = getLessonModel();
@@ -27,13 +28,9 @@ const createLesson = async (data) => {
 
         const details = data.Details.map((item, index) => ({
             LessonID: lesson._id,
-            Title: item.Title,
             Type: item.Type,
             Content: item.Content ?? "",
             FileUrl: item.FileUrl ?? "",
-            Thumbnail: item.Thumbnail ?? "",
-            Duration: item.Duration ?? 0,
-            Oder: item.Oder ?? index + 1
         }));
 
         await LessonDetail.insertMany(details);
@@ -93,18 +90,41 @@ const updateLesson = async (id, data) => {
     for (const detail of details) {
         await LessonDetail.create({
             LessonID: id,
-            Title: detail.Title,
             Content: detail.Content,
             Type: detail.Type,
             FileUrl: detail.FileUrl,
-            Oder: detail.Oder ?? 0,
-            Duration: detail.Duration ?? 0,
-            Status: detail.Status ?? true
         });
     }
 
     return lesson;
 };
 
+const deleteLesson = async (id) => {
 
-module.exports = { createLesson, getLessonById, getAllLessons, getLessonByCourseId, updateLesson };
+    const Lesson = getLessonModel();
+    const LessonDetail = getLessonDetailModel();
+
+    await LessonDetail.deleteMany({
+        LessonID: id
+    });
+
+    const lesson = await Lesson.findByIdAndDelete(id);
+
+    if (!lesson) {
+        throw new Error("Lesson not found");
+    }
+
+    return lesson;
+};
+
+module.exports = {
+    createLesson,
+    getLessonById,
+    getAllLessons,
+    getLessonByCourseId,
+    updateLesson,
+    deleteLesson
+};
+
+
+module.exports = { createLesson, getLessonById, getAllLessons, getLessonByCourseId, updateLesson, deleteLesson };
