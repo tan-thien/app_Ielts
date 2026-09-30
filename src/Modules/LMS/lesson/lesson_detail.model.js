@@ -12,7 +12,8 @@ const lessonDetailSchema = new mongoose.Schema({
     },
     FileUrl: { type: String, default: "" },
     Status: { type: Boolean, default: true },
-},
-    { timestamps: true });
+    Order: { type: Number, required: true, min: 1, default: 1 },
+}, { timestamps: true });
 
+lessonDetailSchema.index({ LessonID: 1, Order: 1 });
 module.exports = () => { return getDB_LMS().model('LessonDetail', lessonDetailSchema); };

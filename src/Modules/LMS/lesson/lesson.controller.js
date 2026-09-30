@@ -2,10 +2,30 @@ const lessonService = require("./lesson.service");
 
 const createLesson = async (req, res) => {
     try {
-        const lesson = await lessonService.createLesson(req.body);
-        return res.status(201).json({ success: true, message: "Lesson created successfully", data: lesson });
+
+        console.log("REQ.USER:", req.user);
+
+        const data = {
+            ...req.body,
+            UserCreate: req.user.userId
+        };
+
+        console.log("UserCreate:", data.UserCreate);
+
+        const lesson = await lessonService.createLesson(data);
+
+        return res.status(201).json({
+            message: "Lesson created successfully",
+            lesson
+        });
+
     } catch (error) {
-        return res.status(400).json({ success: false, message: error.message });
+
+        console.error("Create lesson error:", error);
+
+        return res.status(500).json({
+            message: error.message
+        });
     }
 };
 
@@ -55,7 +75,7 @@ const updateLesson = async (req, res) => {
 const deleteLesson = async (req, res) => {
     try {
 
-        const lesson = await service.deleteLesson(req.params.id);
+        const lesson = await lessonService.deleteLesson(req.params.id);
 
         res.json({
             success: true,
