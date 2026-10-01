@@ -2,8 +2,7 @@ const { createAssignment, updateAssignment, getAllAssignments, getAssignmentById
 
 const createAssignmentController = async (req, res) => {
     try {
-        const data = req.body;
-        data.UserCreate = req.user.userId;
+        const data = { ...req.body, UserCreate: req.user.userId };
         const assignment = await createAssignment(data, req.user.userId);
         return res.status(201).json({ success: true, message: 'Create assignment successfully', data: assignment });
 
@@ -27,7 +26,7 @@ const updateAssignmentController = async (req, res) => {
 
 const getAssignmentController = async (req, res) => {
     try {
-        const assignment = await getAllAssignments();
+        const assignment = await getAllAssignments(req.user.role);
         return res.status(200).json({ success: true, message: 'Get assignment successfully', data: assignment });
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message });
@@ -37,7 +36,7 @@ const getAssignmentController = async (req, res) => {
 const getAssignmentByIdController = async (req, res) => {
     try {
         const id = req.params.id;
-        const assignment = await getAssignmentById(id);
+        const assignment = await getAssignmentById(id, req.user.role);
         return res.status(200).json({ success: true, message: 'Get assignment successfully', data: assignment });
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message });

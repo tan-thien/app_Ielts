@@ -66,6 +66,31 @@ const getByLesson = async (req, res) => {
 
 };
 
+const reorderDetails = async (req, res) => {
+
+    try {
+
+        const details = await service.reorderDetails(
+            req.params.lessonId,
+            req.body.detailIds
+        );
+
+        res.json({
+            success: true,
+            data: details
+        });
+
+    } catch (err) {
+
+        res.status(400).json({
+            success: false,
+            message: err.message
+        });
+
+    }
+
+};
+
 const updateDetail = async (req, res) => {
 
     try {
@@ -117,6 +142,7 @@ module.exports = {
     createDetail,
     getDetailById,
     getByLesson,
+    reorderDetails,
     updateDetail,
     deleteDetail
 };

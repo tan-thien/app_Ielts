@@ -24,7 +24,7 @@ const getAllSubmissionsController = async (req, res) => {
 const getSubmissionByIdController = async (req, res) => {
     try {
         const id = req.params.id;
-        const submission = await getSubmissionById(id);
+        const submission = await getSubmissionById(id, req.user.userId, req.user.role);
         return res.status(200).json({ success: true, message: 'Get submission successfully', data: submission });
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message });
@@ -33,7 +33,7 @@ const getSubmissionByIdController = async (req, res) => {
 
 const getSubmissionByAssignmentController = async (req, res) => {
     try {
-        const assignmentId = req.params.assignmentId;
+        const assignmentId = req.params.id;
         const submission = await getSubmissionByAssignment(assignmentId);
         return res.status(200).json({ success: true, message: 'Get submission successfully', data: submission });
     } catch (error) {
