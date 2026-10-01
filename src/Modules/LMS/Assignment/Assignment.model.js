@@ -16,7 +16,24 @@ const assignmentSchema = new mongoose.Schema({
     EndDate: { type: Date },
     Questions: [{
         Order: { type: Number, required: true },
-        Type: { type: String, enum: ["MultipleChoice", "Checkbox", "TrueFalse", "FillBlank", "Matching", "Ordering", "Essay", "Speaking"], required: true },
+        Type: {
+            type: String,
+            enum: [
+                "MultipleChoice", "Checkbox", "TrueFalse", "YesNo",
+                "TrueFalseNotGiven", "YesNoNotGiven", "FillBlank", "ShortAnswer",
+                "Matching", "MatchingHeadings", "MatchingInformation",
+                "MatchingFeatures", "MatchingSentenceEndings", "Ordering",
+                "SentenceCompletion", "NoteCompletion", "FormCompletion",
+                "TableCompletion", "SummaryCompletion", "FlowChartCompletion",
+                "MapLabeling", "DiagramLabeling", "Essay", "Speaking"
+            ],
+            required: true
+        },
+        Part: { type: Number, min: 1, max: 4, default: null },
+        GroupID: { type: String, default: "" },
+        Instructions: { type: String, default: "" },
+        AnswerCount: { type: Number, min: 1, default: 1 },
+        WordLimit: { type: Number, min: 1, default: null },
         Title: { type: String, default: "" },
         Question: { type: String, required: true },
         Resources: [{

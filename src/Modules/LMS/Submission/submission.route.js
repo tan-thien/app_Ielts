@@ -12,7 +12,7 @@ router.get('/user/:id', authenticate, authorize(['admin']), getSubmissionByUserC
 router.get('/my', authenticate, getSubmissionByMeController);
 router.put('/update/:id', authenticate, updateSubmissionController);
 router.put('/submit/:id', authenticate, submitAssignmentController);
-router.put('/review-ai/:id', reviewAIController);
+router.put('/review-ai/:id', authenticate, authorize(['teacher', 'admin']), reviewAIController);
 router.put('/review-teacher/:id', authenticate, authorize(['teacher', 'admin']), reviewTeacherController);
 router.put('/score/:id', authenticate, authorize(['teacher', 'admin']), updateScoreController);
 router.delete('/delete/:id', authenticate, authorize(['admin']), deleteSubmissionController);

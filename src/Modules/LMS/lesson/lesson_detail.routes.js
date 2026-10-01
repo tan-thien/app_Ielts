@@ -7,6 +7,7 @@ const { authorize } = require("../../../middlewares/authorize.middleware");
 router.post( "/create", authenticate, authorize(["admin"]), controller.createDetail );
 router.get( "/get/:id", controller.getDetailById);
 router.get( "/lesson/:lessonId", controller.getByLesson );
+router.put( "/lesson/:lessonId/reorder", authenticate, authorize(["admin"]), controller.reorderDetails );
 router.put( "/update/:id", authenticate, authorize(["admin"]), controller.updateDetail );
 router.delete( "/delete/:id", authenticate, authorize(["admin"]), controller.deleteDetail);
 
