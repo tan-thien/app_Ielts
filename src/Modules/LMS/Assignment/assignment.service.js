@@ -1,5 +1,5 @@
 const getAssignmentModel = require('./Assignment.model');
-const getUserModel = require('../../auth/Account.model');
+const getUserModel = require('../../../modules/auth/Account.model');
 
 const isWithinAssignmentWindow = (assignment, now = new Date()) => {
     return (!assignment.StartDate || assignment.StartDate <= now) &&
