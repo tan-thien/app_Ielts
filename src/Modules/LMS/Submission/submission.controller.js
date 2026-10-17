@@ -76,7 +76,7 @@ const updateSubmissionController = async (req, res) => {
 const submitAssignmentController = async (req, res) => {
     try {
         const id = req.params.id;
-        const submission = await submitAssignment(id, req.user.userId);
+        const submission = await submitAssignment(id, req.user.userId, req.body?.Answers);
 
         return res.status(200).json({ success: true, message: 'Submit assignment successfully', data: submission });
 

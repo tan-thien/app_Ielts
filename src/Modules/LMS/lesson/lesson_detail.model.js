@@ -16,4 +16,7 @@ const lessonDetailSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 lessonDetailSchema.index({ LessonID: 1, Order: 1 });
-module.exports = () => { return getDB_LMS().model('LessonDetail', lessonDetailSchema); };
+module.exports = () => {
+    const db = getDB_LMS();
+    return db.models.LessonDetail || db.model('LessonDetail', lessonDetailSchema);
+};

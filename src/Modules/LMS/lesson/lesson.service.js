@@ -55,12 +55,12 @@ const getLessonById = async (id) => {
 
 const getAllLessons = async () => {
     const Lesson = getLessonModel();
-    const lessons = await Lesson.find().populate({ path: 'CourseID', model: getCourseModel() }).populate({ path: 'UserCreate', model: getUserModel() });
+    const lessons = await Lesson.find({ IsDeleted: false }).populate({ path: 'CourseID', model: getCourseModel() }).populate({ path: 'UserCreate', model: getUserModel() });
     return lessons;
 }
 const getLessonByCourseId = async (courseId) => {
     const Lesson = getLessonModel();
-    const lessons = await Lesson.find({ CourseID: courseId }).populate({ path: 'CourseID', model: getCourseModel() }).populate({ path: 'UserCreate', model: getUserModel() });
+    const lessons = await Lesson.find({ CourseID: courseId, IsDeleted: false }).populate({ path: 'CourseID', model: getCourseModel() }).populate({ path: 'UserCreate', model: getUserModel() });
     return lessons;
 }
 
@@ -86,18 +86,17 @@ const updateLesson = async (id, data) => {
         throw new Error("Lesson not found");
     }
 
-    await LessonDetail.deleteMany({ LessonID: id });
-
-    const details = data.Details || [];
-    for (const detail of details) {
-        await LessonDetail.create({
+    if (Array.isArray(data.Details)) {
+        await LessonDetail.deleteMany({ LessonID: id });
+        const details = data.Details.map((detail, index) => ({
             LessonID: id,
             Content: detail.Content,
             Type: detail.Type,
             FileUrl: detail.FileUrl,
             Status: detail.Status ?? true,
             Order: index + 1
-        });
+        }));
+        if (details.length) await LessonDetail.insertMany(details);
     }
 
     return lesson;

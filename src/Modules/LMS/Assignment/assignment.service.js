@@ -1,5 +1,6 @@
 const getAssignmentModel = require('./Assignment.model');
-const getUserModel = require('../../../modules/auth/Account.model');
+const getUserModel = require('../../../Modules/auth/Account.model');
+const getLessonModel = require('../lesson/lesson.model');
 
 const isWithinAssignmentWindow = (assignment, now = new Date()) => {
     return (!assignment.StartDate || assignment.StartDate <= now) &&
@@ -58,7 +59,7 @@ const createAssignment = async (data, currentUserId) => {
     return assignment;
 };
 
-const updateAssignment = async (id, data, currentUserId) => {
+const updateAssignment = async (id, data, currentUserId, currentUserRole) => {
     const Assignment = getAssignmentModel();
 
     // Get the current assignment to check authorization
@@ -68,7 +69,8 @@ const updateAssignment = async (id, data, currentUserId) => {
     }
 
     // Authorize: only creator can update
-    if (currentAssignment.UserCreate.toString() !== currentUserId.toString()) {
+    if (currentUserRole !== 'admin' &&
+        currentAssignment.UserCreate.toString() !== currentUserId.toString()) {
         throw new Error('Unauthorized: You can only update your own assignment');
     }
 
@@ -128,6 +130,32 @@ const getAllAssignments = async (userRole) => {
         .map(hideAnswerKeys);
 };
 
+const getCourseAssignments = async (courseId, now = new Date()) => {
+    const Assignment = getAssignmentModel();
+    const Lesson = getLessonModel();
+    const activeLessons = await Lesson.find({
+        CourseID: courseId,
+        IsDeleted: false,
+        Status: 'Active'
+    }).select('_id');
+    const activeLessonIds = activeLessons.map(lesson => lesson._id);
+    const assignments = await Assignment.find({
+        IsDeleted: false,
+        IsOpen: true,
+        $or: [
+            { CourseID: courseId },
+            { LessonID: { $in: activeLessonIds } }
+        ]
+    }).sort({ createdAt: 1 });
+
+    return assignments
+        .filter(assignment =>
+            (!assignment.LessonID || activeLessonIds.some(id => id.toString() === assignment.LessonID.toString())) &&
+            isWithinAssignmentWindow(assignment, now)
+        )
+        .map(hideAnswerKeys);
+};
+
 const getAssignmentById = async (id, userRole) => {
     const Assignment = getAssignmentModel();
     const User = getUserModel();
@@ -147,7 +175,7 @@ const getAssignmentById = async (id, userRole) => {
     return hideAnswerKeys(assignment);
 };
 
-const deleteAssignment = async (id, currentUserId) => {
+const deleteAssignment = async (id, currentUserId, currentUserRole) => {
     const Assignment = getAssignmentModel();
     
     // Get the current assignment to check authorization
@@ -157,7 +185,8 @@ const deleteAssignment = async (id, currentUserId) => {
     }
 
     // Authorize: only creator can delete
-    if (currentAssignment.UserCreate.toString() !== currentUserId.toString()) {
+    if (currentUserRole !== 'admin' &&
+        currentAssignment.UserCreate.toString() !== currentUserId.toString()) {
         throw new Error('Unauthorized: You can only delete your own assignment');
     }
     
@@ -178,6 +207,7 @@ module.exports = {
     createAssignment,
     updateAssignment,
     getAllAssignments,
+    getCourseAssignments,
     getAssignmentById,
     deleteAssignment,
     isWithinAssignmentWindow

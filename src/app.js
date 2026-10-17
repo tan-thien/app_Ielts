@@ -1,12 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
 const routes = require('./routes/index');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 
 
-dotenv.config();
+dotenv.config({
+    path: path.resolve(__dirname, '../.env'),
+    override: process.env.NODE_ENV !== 'production'
+});
 
 const app = express();
 
