@@ -4,6 +4,7 @@ const { OAuth2Client } = require('google-auth-library');
 
 const getUserModel = require('./Account.model');
 const getDetailModel = require('./Account_Detail.model');
+const getLoginEventModel = require('./LoginEvent.model');
 
 const createSession = (user) => {
   const token = jwt.sign(
@@ -127,6 +128,7 @@ const login = async (Email, Password) => {
   const isMatch = await bcrypt.compare(Password, user.Password);
   if (!isMatch) throw new Error('Wrong password');
 
+  await getLoginEventModel().create({ AccountID: user._id });
   return createSession(user);
 };
 
@@ -146,6 +148,7 @@ const googleLogin = async (credential) => {
       user.GoogleID = identity.googleId;
       await user.save();
     }
+    await getLoginEventModel().create({ AccountID: user._id });
     return { message: 'Login success', ...createSession(user) };
   }
 

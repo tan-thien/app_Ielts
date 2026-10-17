@@ -2,8 +2,13 @@ const mongoose = require('mongoose');
 const { getDB_LMS } = require('../../../config/db_Account');
 
 const submissionSchema = new mongoose.Schema({
-    AssignmentID: { type: mongoose.Schema.Types.ObjectId, ref: "Assignment", required: true },
+    AssignmentID: { type: mongoose.Schema.Types.ObjectId, ref: "Assignment", default: null },
     UserID: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
+    Skill: { type: String, enum: ["Reading", "Listening", "Writing", "Speaking"], default: null },
+    PracticeType: { type: String, enum: ["Writing", "Speaking"], default: null },
+    TaskType: { type: String, default: null },
+    Prompt: { type: String, default: "" },
+    AudioMimeType: { type: String, default: "" },
     StartTime: { type: Date, default: Date.now },
     SubmitTime: { type: Date },
     Duration: { type: Number, default: 0 },
@@ -14,10 +19,7 @@ const submissionSchema = new mongoose.Schema({
         FileUrl: { type: String, default: "" },
         Score: { type: Number, default: 0 },
         Feedback: { type: String, default: "" },
-        AIReview: {
-            Band: { type: Number, default: 0 },
-            Feedback: { type: String, default: "" }
-        },
+        AIReview: { type: mongoose.Schema.Types.Mixed, default: null },
         TeacherReview: {
             TeacherID: { type: mongoose.Schema.Types.ObjectId, ref: "Account", default: null },
             Band: { type: Number, default: 0 },
