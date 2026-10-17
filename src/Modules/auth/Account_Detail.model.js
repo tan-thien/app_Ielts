@@ -12,4 +12,7 @@ const schema = new mongoose.Schema({
     
 });
 
-module.exports = () => {return getDB().model('Account_Detail', schema);};
+module.exports = () => {
+    const db = getDB();
+    return db.models.Account_Detail || db.model('Account_Detail', schema);
+};

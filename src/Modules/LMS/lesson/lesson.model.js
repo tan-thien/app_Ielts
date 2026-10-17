@@ -20,4 +20,7 @@ const lessonSchema = new mongoose.Schema({
 },
     { timestamps: true });
 
-module.exports = () => { return getDB_LMS().model('Lesson', lessonSchema); };
+module.exports = () => {
+    const db = getDB_LMS();
+    return db.models.Lesson || db.model('Lesson', lessonSchema);
+};

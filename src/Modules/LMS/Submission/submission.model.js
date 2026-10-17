@@ -29,4 +29,7 @@ const submissionSchema = new mongoose.Schema({
     IsPassed: { type: Boolean, default: false }
 }, { timestamps: true });
 
-module.exports = () => { return getDB_LMS().model('Submission', submissionSchema); };
+module.exports = () => {
+    const db = getDB_LMS();
+    return db.models.Submission || db.model('Submission', submissionSchema);
+};

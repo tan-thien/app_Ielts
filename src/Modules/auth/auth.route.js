@@ -20,7 +20,10 @@ router.post('/register', controller.register);
  *     tags: [Auth]
  */
 router.post('/login', controller.login);
+router.post('/google', controller.googleLogin);
+router.post('/google/complete-registration', controller.completeGoogleRegistration);
 router.get("/me", authenticate, controller.getMe);
+router.put('/me', authenticate, controller.updateMe);
 router.get('/user/:userId', authenticate, controller.getUserById);
 
 module.exports = router;

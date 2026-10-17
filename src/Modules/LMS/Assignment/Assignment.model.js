@@ -53,4 +53,7 @@ const assignmentSchema = new mongoose.Schema({
     IsDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
-module.exports = () => { return getDB_LMS().model('Assignment', assignmentSchema); };
+module.exports = () => {
+    const db = getDB_LMS();
+    return db.models.Assignment || db.model('Assignment', assignmentSchema);
+};

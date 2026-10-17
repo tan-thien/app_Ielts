@@ -6,6 +6,7 @@ const courseSchema = new mongoose.Schema({
     Description: {  type: String, required: true},
     Time: { type: Date, required: true },
     UserCreate: { type: mongoose.Schema.Types.ObjectId, ref: 'Account', required: true },
+    TeacherIDs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Account' }],
     Fee: { type: Number, default: 0.00 },
     Thumbnail: { type: String, required: true },
     Status:{type: Boolean, default: false},
@@ -14,4 +15,7 @@ const courseSchema = new mongoose.Schema({
     
 });
 
-module.exports = () => {return getDB_LMS().model('Course', courseSchema);};
+module.exports = () => {
+    const db = getDB_LMS();
+    return db.models.Course || db.model("Course", courseSchema);
+};
