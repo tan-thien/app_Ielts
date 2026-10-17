@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const getAccountModel = require('../../auth/Account.model');
 const getAccountDetailModel = require('../../auth/Account_Detail.model');
+const getLoginEventModel = require('../../auth/LoginEvent.model');
 const getCourseModel = require('../../LMS/Course/Course.model');
 const getOrderModel = require('../../LMS/Order/Order.model');
 const getLessonModel = require('../../LMS/lesson/lesson.model');
@@ -49,6 +50,7 @@ const getReports = async (options = {}) => {
     const LessonProgress = getLessonProgressModel();
     const Submission = getSubmissionModel();
     const Assignment = getAssignmentModel();
+    const LoginEvent = getLoginEventModel();
     const requestedMonths = Number.parseInt(options.months, 10);
     const months = [6, 12, 24].includes(requestedMonths) ? requestedMonths : 12;
     const now = new Date();
@@ -122,6 +124,8 @@ const getReports = async (options = {}) => {
         courseCount,
         assignmentCount,
         paidOrderTotals,
+        loginTotal,
+        loginMonthly,
         accountMonthly,
         courseMonthly,
         revenueMonthly,
@@ -156,6 +160,8 @@ const getReports = async (options = {}) => {
                 }
             }
         ]),
+        LoginEvent.countDocuments(),
+        LoginEvent.aggregate(monthlyMatch('$LoggedInAt')),
         Account.aggregate(accountMonthlyPipeline),
         Course.aggregate(courseMonthlyPipeline),
         Order.aggregate(revenueMonthlyPipeline),
@@ -211,12 +217,17 @@ const getReports = async (options = {}) => {
             newTeachers: 0,
             newCourses: 0,
             completedLessons: 0,
-            submissions: 0
+            submissions: 0,
+            logins: 0
         });
     }
     for (const item of accountMonthly) {
         const row = monthlyByKey.get(item._id.month);
         if (row) row[item._id.role === 'teacher' ? 'newTeachers' : 'newStudents'] = item.count;
+    }
+    for (const item of loginMonthly) {
+        const row = monthlyByKey.get(item._id);
+        if (row) row.logins = item.count;
     }
     for (const item of courseMonthly) {
         const row = monthlyByKey.get(item._id);
@@ -275,7 +286,8 @@ const getReports = async (options = {}) => {
         newTeachers: result.newTeachers + month.newTeachers,
         newCourses: result.newCourses + month.newCourses,
         completedLessons: result.completedLessons + month.completedLessons,
-        submissions: result.submissions + month.submissions
+        submissions: result.submissions + month.submissions,
+        logins: result.logins + month.logins
     }), {
         revenue: 0,
         paidOrders: 0,
@@ -283,7 +295,8 @@ const getReports = async (options = {}) => {
         newTeachers: 0,
         newCourses: 0,
         completedLessons: 0,
-        submissions: 0
+        submissions: 0,
+        logins: 0
     });
 
     return {
@@ -296,6 +309,7 @@ const getReports = async (options = {}) => {
             courses: courseCount,
             assignments: assignmentCount,
             paidLearners: paidTotals.learners,
+            allTimeLogins: loginTotal,
             paidOrders: paidTotals.orders,
             allTimeRevenue: paidTotals.revenue,
             ...totals
