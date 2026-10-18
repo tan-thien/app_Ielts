@@ -1,17 +1,12 @@
 const getSubmissionModel = require('../LMS/Submission/submission.model');
-const { GoogleGenAI } = require('@google/genai');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 90000;
-const MAX_RETRIES = Math.max(0, Math.min(2, Number(process.env.GEMINI_MAX_RETRIES) || 1));
-const MAX_OUTPUT_TOKENS = Math.max(3200, Math.min(8000, Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 5200));
-const MAX_PRIORITY_ERRORS = Math.max(8, Math.min(24, Number(process.env.GEMINI_MAX_ERRORS) || 20));
+const configuredTimeout = Number(process.env.GEMINI_TIMEOUT_MS) || 150000;
+const TIMEOUT_MS = Math.max(30000, Math.min(180000, configuredTimeout));
+const MAX_RETRIES = Math.max(0, Math.min(1, Number(process.env.GEMINI_MAX_RETRIES) || 0));
+const MAX_OUTPUT_TOKENS = Math.max(2400, Math.min(5000, Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 3800));
+const MAX_PRIORITY_ERRORS = Math.max(4, Math.min(10, Number(process.env.GEMINI_MAX_ERRORS) || 8));
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-
-const getGeminiClient = () => {
-    if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured');
-    return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-};
 
 const writingCriteria = taskType => taskType === 'task1'
     ? ['Task Achievement', 'Coherence and Cohesion', 'Lexical Resource', 'Grammatical Range and Accuracy']
@@ -64,12 +59,17 @@ const parseJson = text => {
 
 const isRetryableStatus = status => [408, 429, 500, 502, 503, 504].includes(Number(status));
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+const textList = (value, limit = 4) => Array.isArray(value)
+    ? value.filter(item => typeof item === 'string' && item.trim()).slice(0, limit).map(item => item.trim().slice(0, 500))
+    : [];
 
-const requestGemini = async parts => {
+const requestGemini = async (parts, options = {}) => {
     if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured');
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const abortFromCaller = () => controller.abort();
+        options.signal?.addEventListener('abort', abortFromCaller, { once: true });
         try {
             const response = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
                 method: 'POST',
@@ -77,7 +77,11 @@ const requestGemini = async parts => {
                 signal: controller.signal,
                 body: JSON.stringify({
                     contents: [{ role: 'user', parts }],
-                    generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+                    generationConfig: {
+                        temperature: 0.2,
+                        maxOutputTokens: MAX_OUTPUT_TOKENS,
+                        responseMimeType: 'application/json'
+                    }
                 })
             });
             const body = await response.json().catch(() => ({}));
@@ -101,6 +105,9 @@ const requestGemini = async parts => {
             return parseJson(text);
         } catch (error) {
             if (error.name === 'AbortError') {
+                if (options.signal?.aborted) {
+                    throw Object.assign(new Error('AI evaluation was cancelled'), { statusCode: 499 });
+                }
                 console.error('[AI] Gemini upstream timeout', { status: 504, attempt: attempt + 1, model: MODEL, timeoutMs: TIMEOUT_MS });
                 if (attempt < MAX_RETRIES) {
                     await wait(300 * (attempt + 1));
@@ -113,7 +120,106 @@ const requestGemini = async parts => {
             throw error;
         } finally {
             clearTimeout(timeout);
+            options.signal?.removeEventListener('abort', abortFromCaller);
         }
+    }
+};
+
+const requestGeminiStream = async (parts, signal, onText) => {
+    if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured');
+    if (signal?.aborted) {
+        throw Object.assign(new Error('AI evaluation was cancelled'), { statusCode: 499 });
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const abortFromCaller = () => controller.abort();
+    signal?.addEventListener('abort', abortFromCaller, { once: true });
+
+    try {
+        const streamUrl = GEMINI_URL.replace(':generateContent', ':streamGenerateContent');
+        const response = await fetch(`${streamUrl}?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}&alt=sse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts }],
+                generationConfig: {
+                    temperature: 0.2,
+                    maxOutputTokens: MAX_OUTPUT_TOKENS,
+                    responseMimeType: 'text/plain'
+                }
+            })
+        });
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            const message = body.error?.message || `Gemini request failed (${response.status})`;
+            console.error('[AI] Gemini streaming upstream error', {
+                status: response.status,
+                model: MODEL,
+                message: String(message).slice(0, 500)
+            });
+            const error = new Error(message);
+            error.statusCode = response.status === 429 ? 503 : 502;
+            throw error;
+        }
+        if (!response.body) {
+            const error = new Error('Gemini did not return a response stream');
+            error.statusCode = 502;
+            throw error;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let receivedText = false;
+        const dispatch = block => {
+            const data = block.split(/\r?\n/)
+                .filter(line => line.startsWith('data:'))
+                .map(line => line.slice(5).trim())
+                .join('\n');
+            if (!data || data === '[DONE]') return;
+            let payload;
+            try {
+                payload = JSON.parse(data);
+            } catch {
+                return;
+            }
+            const text = payload.candidates?.[0]?.content?.parts
+                ?.map(part => part.text || '')
+                .join('');
+            if (text) {
+                receivedText = true;
+                onText(text);
+            }
+        };
+
+        while (true) {
+            if (signal?.aborted) throw Object.assign(new Error('Client disconnected'), { statusCode: 499 });
+            const { value, done } = await reader.read();
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            const blocks = buffer.split(/\r?\n\r?\n/);
+            buffer = blocks.pop() || '';
+            blocks.forEach(dispatch);
+            if (done) break;
+        }
+        if (buffer.trim()) dispatch(buffer);
+        if (!receivedText) {
+            const error = new Error('Gemini returned an empty streaming response');
+            error.statusCode = 502;
+            throw error;
+        }
+    } catch (error) {
+        if (controller.signal.aborted && !signal?.aborted) {
+            console.error('[AI] Gemini streaming timeout', { status: 504, model: MODEL, timeoutMs: TIMEOUT_MS });
+            throw Object.assign(new Error('AI evaluation timed out. Please try again.'), { statusCode: 504 });
+        }
+        if (signal?.aborted) {
+            throw Object.assign(new Error('AI evaluation was cancelled'), { statusCode: 499 });
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', abortFromCaller);
     }
 };
 
@@ -135,17 +241,17 @@ const normalizeResult = (raw, criteria, kind) => {
                 type: 'Writing issue',
                 quote: '',
                 location: '',
-                explanation: item.trim(),
+                explanation: item.trim().slice(0, 600),
                 suggestion: ''
             };
         }
         const error = item && typeof item === 'object' ? item : {};
         return {
-            type: String(error.type ?? error.category ?? error.criterion ?? 'Writing issue').trim() || 'Writing issue',
-            quote: String(error.quote ?? error.original ?? error.evidence ?? '').trim(),
-            location: String(error.location ?? error.position ?? '').trim(),
-            explanation: String(error.explanation ?? error.error ?? error.description ?? error.message ?? error.text ?? '').trim(),
-            suggestion: String(error.suggestion ?? error.correction ?? error.improvement ?? '').trim()
+            type: (String(error.type ?? error.category ?? error.criterion ?? 'Writing issue').trim() || 'Writing issue').slice(0, 80),
+            quote: String(error.quote ?? error.original ?? error.evidence ?? '').trim().slice(0, 500),
+            location: String(error.location ?? error.position ?? '').trim().slice(0, 160),
+            explanation: String(error.explanation ?? error.error ?? error.description ?? error.message ?? error.text ?? '').trim().slice(0, 600),
+            suggestion: String(error.suggestion ?? error.correction ?? error.improvement ?? '').trim().slice(0, 600)
         };
     }).filter(item => item.explanation || item.quote || item.suggestion);
     const normalizedCriteria = criteria.map(name => {
@@ -159,34 +265,45 @@ const normalizeResult = (raw, criteria, kind) => {
         return {
             name,
             band,
-            strengths: Array.isArray(item.strengths) ? item.strengths.slice(0, 8) : [],
-            weaknesses: Array.isArray(item.weaknesses) ? item.weaknesses.slice(0, 8) : [],
-            evidence: Array.isArray(item.evidence) ? item.evidence.slice(0, 8) : [],
-            improvements: Array.isArray(item.improvements) ? item.improvements.slice(0, 8) : []
+            strengths: textList(item.strengths, 3),
+            weaknesses: textList(item.weaknesses, 3),
+            evidence: textList(item.evidence, 3),
+            improvements: textList(item.improvements, 3)
         };
     });
     return {
         kind,
         estimatedOverallBand: overallFrom(normalizedCriteria),
         criteria: normalizedCriteria,
-        strengths: Array.isArray(raw.strengths) ? raw.strengths.slice(0, 10) : [],
-        weaknesses: Array.isArray(raw.weaknesses) ? raw.weaknesses.slice(0, 10) : [],
+        strengths: textList(raw.strengths, 5),
+        weaknesses: textList(raw.weaknesses, 5),
         priorityErrors: normalizedErrors,
-        actionPlan: Array.isArray(raw.actionPlan) ? raw.actionPlan.slice(0, 10) : [],
-        generalFeedback: typeof raw.generalFeedback === 'string' ? raw.generalFeedback : (typeof raw.feedback === 'string' ? raw.feedback : ''),
-        transcript: typeof raw.transcript === 'string' ? raw.transcript : '',
-        limitation: typeof raw.limitation === 'string' ? raw.limitation : '',
+        actionPlan: textList(raw.actionPlan, 4),
+        generalFeedback: typeof raw.generalFeedback === 'string'
+            ? raw.generalFeedback.slice(0, 1500)
+            : (typeof raw.feedback === 'string' ? raw.feedback.slice(0, 1500) : ''),
+        bandRationale: typeof raw.bandRationale === 'string' ? raw.bandRationale.slice(0, 800) : '',
+        correctedResponse: typeof raw.correctedResponse === 'string' ? raw.correctedResponse.slice(0, 12000) : '',
+        transcript: typeof raw.transcript === 'string' ? raw.transcript.slice(0, 5000) : '',
+        limitation: typeof raw.limitation === 'string' ? raw.limitation.slice(0, 800) : '',
         disclaimer: 'AI-estimated IELTS band, not an official IELTS result.'
     };
 };
 
-const writingPrompt = (taskType, prompt, answer) => `You are an IELTS examiner assistant. Evaluate the student's ${taskType === 'task1' ? 'Academic Writing Task 1' : 'Writing Task 2'} response only against the official-style criteria. Return a complete but concise JSON result. Do not invent quotations or errors. Always return all four criteria, a score, concise evidence, and up to ${MAX_PRIORITY_ERRORS} highest-impact errors (not every minor typo). Use this shape: {"criteria":[{"name":"...","band":6.0,"strengths":[],"weaknesses":[],"evidence":[],"improvements":[]}],"strengths":[],"weaknesses":[],"priorityErrors":[{"type":"Grammar/Lexical/Task","quote":"exact student words","location":"sentence or paragraph","explanation":"what is wrong and why","suggestion":"corrected wording"}],"actionPlan":[],"generalFeedback":""}. Use exact criteria names: ${writingCriteria(taskType).join(', ')}. Return numeric IELTS bands in half-band increments; never use 0 as a placeholder. If a criterion cannot be assessed, explain why instead of inventing a band. Evidence and quotes must come only from the student's response. Keep each error concise so the complete result is returned before timeout. Every priorityErrors item must be an object, not a string. Task prompt: ${prompt}\nStudent response:\n${answer}`;
+const writingPrompt = (taskType, prompt, answer) => `Act as a careful IELTS Writing examiner. Assess this ${taskType === 'task1' ? 'Academic Task 1' : 'Task 2'} against IELTS public band descriptors. Give a useful, specific report, not generic praise. Write feedback explanations, bandRationale, actionPlan and generalFeedback in Vietnamese; keep quotes and corrected English in English. Consider whether the response develops enough detail for the task (normally at least 150 words for Task 1 and 250 for Task 2), but do not apply a mechanical word-count penalty. Return one JSON object only.
+Exact criteria: ${writingCriteria(taskType).join(', ')}. Use half-band scores from 0 to 9; estimate consistently and explain the main band-limiting reasons in bandRationale. Never promise an official score.
+For each criterion provide 1-2 concise strengths, weaknesses, evidence quotes from the response, and actionable improvements. Do not invent quotes, errors, chart data or task requirements. Identify the 6 most important real language/logic issues maximum; each correction must quote exact wording and show a natural correction plus a brief explanation. Prioritize repeated grammar patterns (articles, subject-verb agreement, tense, sentence structure), unnatural collocations, vocabulary precision, paragraph logic and task coverage. Do not list every typo.
+Return: {"criteria":[{"name":"exact criterion","band":6.0,"strengths":[],"weaknesses":[],"evidence":[],"improvements":[]}],"strengths":[],"weaknesses":[],"priorityErrors":[{"type":"Grammar/Lexical/Coherence/Task","quote":"exact words","location":"sentence or paragraph","explanation":"brief reason","suggestion":"natural correction"}],"actionPlan":["three ranked next steps"],"generalFeedback":"2-3 sentences: task coverage, organization, language control and what most limits the band","bandRationale":"briefly explain the overall estimate and the main gap to the next half band","correctedResponse":"A polished version preserving the student's own position and ideas. Correct language and improve development without inventing evidence. Keep it close to the original length, maximum 350 words. For Task 1 use only visible/given information; if the chart cannot be read, leave this field empty and explain the limitation."}.
+Evidence and corrected wording must not misrepresent the answer. Keep every field concise; return no markdown. Task: ${prompt}\nStudent response:\n${answer}`;
 
-const streamingWritingPrompt = (taskType, prompt, answer) => `Evaluate this IELTS ${taskType === 'task1' ? 'Academic Writing Task 1' : 'Writing Task 2'} response. Stream newline-delimited JSON objects, one complete object per line, with no markdown or extra text. Emit four criterion_score events first, then feedback, then up to ${MAX_PRIORITY_ERRORS} highest-impact correction events, then a complete result event. Do not omit errors merely because the essay is long; prioritize grammar, vocabulary, task response/achievement and cohesion errors that affect the band. Keep each correction concise. Event shapes: {"event":"criterion_score","data":{"name":"...","band":6.0,"strengths":[],"weaknesses":[],"evidence":[],"improvements":[]}}, {"event":"feedback","data":{"text":"..."}}, {"event":"correction","data":{"type":"Grammar/Lexical/Task","quote":"exact student words","location":"sentence or paragraph","explanation":"what is wrong and why","suggestion":"corrected wording"}}, {"event":"result","data":{"criteria":[],"strengths":[],"weaknesses":[],"priorityErrors":[],"actionPlan":[],"generalFeedback":""}}. Use exact criteria names: ${writingCriteria(taskType).join(', ')}. Never invent evidence; quote only the student's response. Bands use half-band increments. Task prompt: ${prompt}\nStudent response:\n${answer}`;
+const streamingWritingPrompt = (taskType, prompt, answer) => `Evaluate this IELTS ${taskType === 'task1' ? 'Academic Task 1' : 'Task 2'} response carefully using public IELTS band descriptors. Write explanations, feedback and actionPlan in Vietnamese; keep evidence quotes, corrections and correctedResponse in English. Consider whether the response develops enough detail for the task (normally at least 150 words for Task 1 and 250 for Task 2), but do not apply a mechanical word-count penalty. Stream newline-delimited JSON objects only, no markdown. Emit four criterion_score events, one concise feedback event, up to 6 high-impact correction events, then one complete result event. Exact criteria: ${writingCriteria(taskType).join(', ')}. Bands use half-band increments. Each criterion event needs band plus concise strengths, weaknesses, evidence and improvements. Quote exact student wording only; do not invent errors or task/chart facts. Prioritize repeated article, subject-verb, tense, sentence-structure and collocation issues; no minor-typo dump. Corrections: {"event":"correction","data":{"type":"Grammar/Lexical/Coherence/Task","quote":"exact words","location":"sentence or paragraph","explanation":"brief Vietnamese reason","suggestion":"natural English correction"}}. Final result must follow this schema: {"event":"result","data":{"criteria":[],"strengths":[],"weaknesses":[],"priorityErrors":[],"actionPlan":["three ranked steps"],"generalFeedback":"2-3 sentences in Vietnamese","bandRationale":"why this estimate and biggest gap to next half band in Vietnamese","correctedResponse":"polished version preserving ideas, close to original length, max 350 words"}}. For Task 1 do not invent unreadable chart data; leave correctedResponse empty if necessary. Keep total output concise.
+Task: ${prompt}\nStudent response:\n${answer}`;
 
-const speakingPrompt = (part, question) => `You are an IELTS Speaking examiner assistant. Evaluate the attached audio for Speaking Part ${part}. First produce an accurate transcript, then assess the response. Return JSON only with shape {"transcript":"","criteria":[{"name":"...","band":6.0,"strengths":[],"weaknesses":[],"evidence":[],"improvements":[]}],"strengths":[],"weaknesses":[],"priorityErrors":[],"actionPlan":[],"generalFeedback":"","limitation":""}. Return exactly all four criteria with numeric IELTS bands in half-band increments; never use 0 as a placeholder for missing data. Exact criteria: ${speakingCriteria.join(', ')}. Assess Pronunciation only from the audio signal; if audio quality prevents reliable assessment, say so in limitation and do not claim certainty. Question: ${question}`;
+const speakingPrompt = (part, question) => `Act as a careful IELTS Speaking examiner. Assess the attached Speaking Part ${part} audio against public IELTS band descriptors. Write feedback, explanations, rationale and actionPlan in Vietnamese; transcript, evidence quotes and corrected English examples remain in English. Return one JSON object only. First transcribe the audible response accurately, including meaningful hesitations only where useful. Assess exact criteria: ${speakingCriteria.join(', ')}. Use half-band scores; never infer pronunciation from transcript. For Pronunciation, use audio only and state limitations if recording quality prevents a confident judgment. Don't invent transcript quotes or phoneme errors.
+Return: {"transcript":"full clear transcript, max 250 words","criteria":[{"name":"exact criterion","band":6.0,"strengths":[],"weaknesses":[],"evidence":[],"improvements":[]}],"strengths":[],"weaknesses":[],"priorityErrors":[{"type":"Grammar/Lexical/Fluency/Pronunciation","quote":"exact transcript words or identifiable audio issue","location":"brief context","explanation":"brief reason","suggestion":"natural alternative or exercise"}],"actionPlan":["three ranked, practical drills"],"generalFeedback":"2-3 specific sentences","bandRationale":"explain the estimate and main gap to the next half band","limitation":"state any audio/assessment limitation or empty string"}.
+Give 1-2 concise notes per criterion and no more than 4 high-impact corrections. Distinguish language errors from pronunciation observations. Keep output concise. Question: ${question}`;
 
-const streamingSpeakingPrompt = (part, question) => `Evaluate the attached IELTS Speaking Part ${part} audio. Return newline-delimited JSON objects only, one complete object per line, no markdown. Emit exactly four concise criterion_score events, at most one feedback event, at most one correction event, and a final result event. Keep transcript under 120 words and all arrays short. Use exact criteria: ${speakingCriteria.join(', ')}. The result must include transcript, criteria, strengths, weaknesses, priorityErrors, actionPlan, generalFeedback and limitation. Assess Pronunciation only from audio; if unreliable, state the limitation. Question: ${question}`;
+const streamingSpeakingPrompt = (part, question) => `Assess the attached IELTS Speaking Part ${part} audio. Write feedback, explanations, rationale and actionPlan in Vietnamese; transcript, evidence quotes and corrected English examples stay in English. Stream newline-delimited JSON objects only, without markdown. Emit four criterion_score events, one concise feedback event, up to 4 evidence-based correction events, then a complete result event. Exact criteria: ${speakingCriteria.join(', ')}. Use half-band scores. Transcribe the audible response faithfully (max 250 words). Assess pronunciation from audio only; if unclear, state limitation and don't guess. Do not invent transcript quotes or pronunciation errors. Criterion events need concise strengths, weaknesses, evidence and improvements. Final result: {"event":"result","data":{"transcript":"","criteria":[],"strengths":[],"weaknesses":[],"priorityErrors":[],"actionPlan":["three practical drills"],"generalFeedback":"2-3 specific Vietnamese sentences","bandRationale":"why this estimate and biggest gap to next half band in Vietnamese","limitation":""}}. Keep all feedback concise. Question: ${question}`;
 
 const validateText = (value, label, max) => {
     if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} cannot be empty`);
@@ -196,7 +313,7 @@ const validateText = (value, label, max) => {
 
 const makeWritingParts = ({ taskType, prompt, answer, image, streaming = false }) => {
     const cleanPrompt = validateText(prompt, 'Task prompt', 10000);
-    const cleanAnswer = validateText(answer, 'Writing response', 30000);
+    const cleanAnswer = validateText(answer, 'Writing response', 12000);
     const parts = [{ text: streaming ? streamingWritingPrompt(taskType, cleanPrompt, cleanAnswer) : writingPrompt(taskType, cleanPrompt, cleanAnswer) }];
     if (image?.data) {
         if (!['image/png', 'image/jpeg', 'image/webp'].includes(image.mimeType) || image.data.length > 7_000_000) {
@@ -255,12 +372,6 @@ const extractJsonObjects = text => {
 };
 
 const streamGemini = async ({ parts, criteria, kind, signal, onEvent }) => {
-    const client = getGeminiClient();
-    const stream = await client.models.generateContentStream({
-        model: MODEL,
-        contents: [{ role: 'user', parts }],
-        config: { temperature: 0.2, maxOutputTokens: MAX_OUTPUT_TOKENS, responseMimeType: 'text/plain' }
-    });
     let lineBuffer = '';
     let resultPayload = null;
     let rawText = '';
@@ -304,10 +415,7 @@ const streamGemini = async ({ parts, criteria, kind, signal, onEvent }) => {
         if (eventName === 'correction') streamedCorrections.push(data);
         onEvent(eventName, data);
     };
-    for await (const chunk of stream) {
-        if (signal?.aborted) throw Object.assign(new Error('Client disconnected'), { statusCode: 499 });
-        const delta = chunk.text || '';
-        if (!delta) continue;
+    const consumeText = delta => {
         rawText += delta;
         lineBuffer += delta;
         const lines = lineBuffer.split(/\r?\n/);
@@ -319,7 +427,8 @@ const streamGemini = async ({ parts, criteria, kind, signal, onEvent }) => {
             try { event = JSON.parse(trimmed); } catch { continue; }
             acceptEvent(event);
         }
-    }
+    };
+    await requestGeminiStream(parts, signal, consumeText);
     const extractedEvents = extractJsonObjects(rawText);
     extractedEvents.forEach(acceptEvent);
     if (!resultPayload) {
@@ -353,8 +462,8 @@ const streamGemini = async ({ parts, criteria, kind, signal, onEvent }) => {
     } catch (error) {
         if (error.statusCode !== 502 || !String(error.message).includes('missing a valid band')) throw error;
         console.warn('[AI] Structured stream was incomplete; requesting one bounded repair result', { model: MODEL, kind });
-        const repairPrompt = `${parts[0].text}\n\nThe streamed response was incomplete. Return ONE complete JSON object only, with no markdown and no event lines. It must contain exactly these criteria with numeric half-band scores: ${criteria.join(', ')}. Include up to ${MAX_PRIORITY_ERRORS} concise priorityErrors objects with type, quote, location, explanation and suggestion. Do not use zero as a placeholder and do not omit any criterion.`;
-        const repaired = await requestGemini([{ text: repairPrompt }, ...parts.slice(1)]);
+        const repairPrompt = `${parts[0].text}\n\nThe stream ended before all criteria received valid half-band scores. Return one complete concise JSON object only, with exactly these criteria: ${criteria.join(', ')}. Include bandRationale, criterion evidence/improvements, up to ${MAX_PRIORITY_ERRORS} concise corrections, three action steps, and the required final response/transcript fields. Do not invent evidence.`;
+        const repaired = await requestGemini([{ text: repairPrompt }, ...parts.slice(1)], { signal });
         return normalizeResult(repaired, criteria, kind);
     }
 };
@@ -409,5 +518,19 @@ module.exports = {
     streamWriting,
     streamSpeaking,
     getPracticeHistory,
-    _test: { clampBand, isValidBand, overallFrom, normalizeResult, parseJson, isRetryableStatus, writingCriteria, speakingCriteria, normalizeAudioMimeType, stripDataUrl }
+    _test: {
+        clampBand,
+        isValidBand,
+        overallFrom,
+        normalizeResult,
+        parseJson,
+        isRetryableStatus,
+        writingCriteria,
+        speakingCriteria,
+        normalizeAudioMimeType,
+        stripDataUrl,
+        requestGeminiStream,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        maxPriorityErrors: MAX_PRIORITY_ERRORS
+    }
 };

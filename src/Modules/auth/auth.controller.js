@@ -71,6 +71,22 @@ const updateMe = async (req, res) => {
   }
 };
 
+const requestPasswordReset = async (req, res) => {
+  try {
+    return res.json(await service.requestPasswordReset(req.body?.email || req.body?.Email));
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    return res.json(await service.resetPassword(req.body?.token, req.body?.password));
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -78,5 +94,7 @@ module.exports = {
   completeGoogleRegistration,
   getUserById,
   getMe,
-  updateMe
+  updateMe,
+  requestPasswordReset,
+  resetPassword
 };

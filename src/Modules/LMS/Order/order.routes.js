@@ -9,6 +9,7 @@ router.get('/vnpay/ipn', controller.vnpayIpn);
 router.get('/vnpay/return', controller.vnpayReturn);
 router.post('/course/:courseId/payment', authenticate, authorize(['user']), controller.createPayment);
 router.get('/course/:courseId', authenticate, authorize(['user']), controller.getCourseOrder);
+router.get('/my-courses', authenticate, authorize(['user']), controller.getMyCourses);
 router.get('/:orderId', authenticate, authorize(['user']), controller.getOrder);
 
 module.exports = router;
