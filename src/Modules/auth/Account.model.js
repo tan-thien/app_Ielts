@@ -4,6 +4,8 @@ const { getDB } = require('../../config/db_Account');
 const schema = new mongoose.Schema({
   Email: String,
   Password: String,
+  PasswordResetTokenHash: String,
+  PasswordResetExpires: Date,
   GoogleID: { type: String, unique: true, sparse: true },
   Role: { type: String, enum: ['user','teacher', 'sensor' ,'admin'], default: 'user' }
 });

@@ -20,6 +20,8 @@ router.post('/register', controller.register);
  *     tags: [Auth]
  */
 router.post('/login', controller.login);
+router.post('/forgot-password', controller.requestPasswordReset);
+router.post('/reset-password', controller.resetPassword);
 router.post('/google', controller.googleLogin);
 router.post('/google/complete-registration', controller.completeGoogleRegistration);
 router.get("/me", authenticate, controller.getMe);

@@ -15,10 +15,16 @@ const writingTask2 = {
 };
 
 test('normalizes a complete Writing Task 2 result without converting valid scores to zero', () => {
-    const result = _test.normalizeResult(writingTask2, _test.writingCriteria('task2'), 'writing');
+    const result = _test.normalizeResult({
+        ...writingTask2,
+        bandRationale: 'Ngữ pháp giới hạn band hiện tại.',
+        correctedResponse: 'A corrected essay.'
+    }, _test.writingCriteria('task2'), 'writing');
     assert.deepEqual(result.criteria.map(item => item.band), [6, 6, 5.5, 6]);
     assert.equal(result.estimatedOverallBand, 6);
     assert.deepEqual(result.strengths, ['Clear position']);
+    assert.equal(result.bandRationale, 'Ngữ pháp giới hạn band hiện tại.');
+    assert.equal(result.correctedResponse, 'A corrected essay.');
 });
 
 test('accepts Gemini Speaking criterion/score aliases', () => {
@@ -80,4 +86,56 @@ test('normalizes MediaRecorder MIME parameters for Gemini audio input', () => {
     assert.equal(_test.normalizeAudioMimeType(' AUDIO/WAV ; codecs=1 '), 'audio/wav');
     assert.equal(_test.stripDataUrl('data:audio/webm;codecs=opus;base64,QUJD'), 'QUJD');
     assert.equal(_test.stripDataUrl('data:image/png;base64,QUJD'), 'QUJD');
+});
+
+test('streams Gemini text from server-sent events and uses the streaming endpoint', async () => {
+    const oldFetch = global.fetch;
+    const oldApiKey = process.env.GEMINI_API_KEY;
+    let requestUrl = '';
+    const chunk = `data: ${JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '{"event":"result"}\n' }] } }]
+    })}\n\n`;
+    global.fetch = async (url) => {
+        requestUrl = String(url);
+        return new Response(chunk, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    };
+    process.env.GEMINI_API_KEY = 'test-key';
+    try {
+        let streamed = '';
+        await _test.requestGeminiStream([], undefined, text => { streamed += text; });
+        assert.match(requestUrl, /:streamGenerateContent\?key=test-key&alt=sse/);
+        assert.equal(streamed, '{"event":"result"}\n');
+    } finally {
+        global.fetch = oldFetch;
+        if (oldApiKey === undefined) delete process.env.GEMINI_API_KEY;
+        else process.env.GEMINI_API_KEY = oldApiKey;
+    }
+});
+
+test('cancels Gemini streaming promptly when the browser disconnects', async () => {
+    const oldFetch = global.fetch;
+    const oldApiKey = process.env.GEMINI_API_KEY;
+    global.fetch = async (_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+        }, { once: true });
+    });
+    process.env.GEMINI_API_KEY = 'test-key';
+    const controller = new AbortController();
+    try {
+        const request = _test.requestGeminiStream([], controller.signal, () => {});
+        setImmediate(() => controller.abort());
+        await assert.rejects(request, error => error.statusCode === 499);
+    } finally {
+        global.fetch = oldFetch;
+        if (oldApiKey === undefined) delete process.env.GEMINI_API_KEY;
+        else process.env.GEMINI_API_KEY = oldApiKey;
+    }
+});
+
+test('keeps AI feedback output bounded for latency and response size', () => {
+    assert.ok(_test.maxOutputTokens >= 2400 && _test.maxOutputTokens <= 5000);
+    assert.ok(_test.maxPriorityErrors >= 4 && _test.maxPriorityErrors <= 10);
 });

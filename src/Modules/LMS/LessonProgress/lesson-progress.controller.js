@@ -30,4 +30,20 @@ const getCourseProgress = async (req, res) => {
     }
 };
 
-module.exports = { completeLesson, getCourseProgress };
+const markCourseAccess = async (req, res) => {
+    try {
+        return res.json({ success: true, data: await progressService.markCourseAccess(req.params.courseId, req.user.userId) });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+};
+
+const getStudyActivity = async (req, res) => {
+    try {
+        return res.json({ success: true, data: await progressService.getStudyActivity(req.user.userId, req.query.month) });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+};
+
+module.exports = { completeLesson, getCourseProgress, markCourseAccess, getStudyActivity };

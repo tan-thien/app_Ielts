@@ -61,6 +61,14 @@ const getCourseOrder = async (req, res) => {
     }
 };
 
+const getMyCourses = async (req, res) => {
+    try {
+        return res.json({ success: true, data: await orderService.getMyCourses(req.user.userId) });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+};
+
 const momoIpn = async (req, res) => {
     try {
         await orderService.verifyMomoIpn(req.body);
@@ -100,4 +108,4 @@ const vnpayReturn = async (req, res) => {
     }
 };
 
-module.exports = { createPayment, getOrder, getCourseOrder, momoIpn, vnpayIpn, vnpayReturn };
+module.exports = { createPayment, getOrder, getCourseOrder, getMyCourses, momoIpn, vnpayIpn, vnpayReturn };

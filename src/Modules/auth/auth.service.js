@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const crypto = require('crypto');
 
 const getUserModel = require('./Account.model');
 const getDetailModel = require('./Account_Detail.model');
@@ -340,11 +341,56 @@ const updateMyProfile = async (userId, data) => {
   return { user, detail };
 };
 
+const requestPasswordReset = async email => {
+  const User = getUserModel();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    const error = new Error('Email is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  const user = await findUserByEmail(User, normalizedEmail);
+  const response = { message: 'If the account exists, a password reset link has been created.' };
+  if (!user || !user.Password) return response;
+  const token = crypto.randomBytes(32).toString('hex');
+  user.PasswordResetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  user.PasswordResetExpires = new Date(Date.now() + 15 * 60 * 1000);
+  await user.save();
+  if (process.env.NODE_ENV !== 'production') {
+    response.resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
+  }
+  return response;
+};
+
+const resetPassword = async (token, password) => {
+  const value = String(token || '').trim();
+  if (!value || typeof password !== 'string' || password.length < 8) {
+    const error = new Error('A valid reset token and a password of at least 8 characters are required');
+    error.statusCode = 400;
+    throw error;
+  }
+  const User = getUserModel();
+  const tokenHash = crypto.createHash('sha256').update(value).digest('hex');
+  const user = await User.findOne({ PasswordResetTokenHash: tokenHash, PasswordResetExpires: { $gt: new Date() } });
+  if (!user) {
+    const error = new Error('Reset token is invalid or expired');
+    error.statusCode = 400;
+    throw error;
+  }
+  user.Password = await bcrypt.hash(password, 10);
+  user.PasswordResetTokenHash = undefined;
+  user.PasswordResetExpires = undefined;
+  await user.save();
+  return { message: 'Password reset successfully' };
+};
+
 module.exports = {
   register,
   login,
   googleLogin,
   completeGoogleRegistration,
   getUserById,
-  updateMyProfile
+  updateMyProfile,
+  requestPasswordReset,
+  resetPassword
 };

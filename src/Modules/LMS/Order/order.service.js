@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const getCourseModel = require('../Course/Course.model');
 const getOrderModel = require('./Order.model');
+const getLessonModel = require('../lesson/lesson.model');
+const getLessonProgressModel = require('../LessonProgress/lesson-progress.model');
 
 const requiredMomoConfig = () => {
     const config = {
@@ -477,6 +479,34 @@ const hasCourseAccess = async (courseId, accountId) => {
     }));
 };
 
+const getMyCourses = async accountId => {
+    const Order = getOrderModel();
+    const Lesson = getLessonModel();
+    const Progress = getLessonProgressModel();
+    const orders = await Order.find({ AccountID: accountId, Status: 'Paid' })
+        .populate({ path: 'CourseID', match: { IsDeleted: false } })
+        .sort({ PaidAt: -1, createdAt: -1 })
+        .lean();
+    const unique = new Map();
+    for (const order of orders) {
+        if (order.CourseID?._id && !unique.has(String(order.CourseID._id))) unique.set(String(order.CourseID._id), order);
+    }
+    return Promise.all([...unique.values()].map(async order => {
+        const courseId = order.CourseID._id;
+        const [total, completed] = await Promise.all([
+            Lesson.countDocuments({ CourseID: courseId, IsDeleted: false, Status: 'Active' }),
+            Progress.countDocuments({ CourseID: courseId, UserID: accountId })
+        ]);
+        return {
+            course: order.CourseID,
+            order: { _id: order._id, PaidAt: order.PaidAt, createdAt: order.createdAt },
+            totalLessons: total,
+            completedLessons: completed,
+            progressPercent: total ? Math.round((Math.min(completed, total) / total) * 100) : 0
+        };
+    }));
+};
+
 module.exports = {
     createPayment,
     verifyMomoIpn,
@@ -485,5 +515,6 @@ module.exports = {
     getVnpayReturnUrl,
     getOrderForAccount,
     getCourseOrderForAccount,
-    hasCourseAccess
+    hasCourseAccess,
+    getMyCourses
 };
