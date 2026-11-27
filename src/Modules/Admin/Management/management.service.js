@@ -53,6 +53,9 @@ const getReports = async (options = {}) => {
     const LoginEvent = getLoginEventModel();
     const requestedMonths = Number.parseInt(options.months, 10);
     const months = [6, 12, 24].includes(requestedMonths) ? requestedMonths : 12;
+    const popularCoursesPage = parsePage(options.popularCoursesPage);
+    const recentOrdersPage = parsePage(options.recentOrdersPage);
+    const pageOffset = (page) => (page - 1) * PAGE_SIZE;
     const now = new Date();
     const vietnamDateParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Ho_Chi_Minh',
@@ -131,9 +134,10 @@ const getReports = async (options = {}) => {
         revenueMonthly,
         lessonMonthly,
         submissionMonthly,
-        popularCourseRecords,
+        popularCoursesResult,
         teacherCourseRecords,
-        assignedTeacherIds
+        assignedTeacherIds,
+        recentPaidOrderCount
     ] = await Promise.all([
         Account.aggregate([
             { $match: { Role: { $in: ['user', 'teacher'] } } },
@@ -183,7 +187,15 @@ const getReports = async (options = {}) => {
                 }
             },
             { $sort: { learners: -1, revenue: -1 } },
-            { $limit: 8 }
+            {
+                $facet: {
+                    items: [
+                        { $skip: pageOffset(popularCoursesPage) },
+                        { $limit: PAGE_SIZE }
+                    ],
+                    total: [{ $count: 'count' }]
+                }
+            }
         ]),
         Course.aggregate([
             { $match: { IsDeleted: false, TeacherIDs: { $exists: true, $ne: [] } } },
@@ -197,9 +209,13 @@ const getReports = async (options = {}) => {
             { $sort: { courses: -1, _id: 1 } },
             { $limit: 8 }
         ]),
-        Course.distinct('TeacherIDs', { IsDeleted: false })
+        Course.distinct('TeacherIDs', { IsDeleted: false }),
+        Order.countDocuments({ Status: 'Paid' })
     ]);
 
+    const popularCourseFacet = popularCoursesResult[0] || { items: [], total: [] };
+    const popularCourseRecords = popularCourseFacet.items;
+    const popularCourseTotal = popularCourseFacet.total[0]?.count || 0;
     const accountCountsByRole = new Map(accountTotals.map(({ _id, count }) => [_id, count]));
     const monthlyByKey = new Map();
     for (let index = 0; index < months; index += 1) {
@@ -257,7 +273,8 @@ const getReports = async (options = {}) => {
             : [],
         Order.find({ Status: 'Paid' })
             .sort({ PaidAt: -1, createdAt: -1 })
-            .limit(5)
+            .skip(pageOffset(recentOrdersPage))
+            .limit(PAGE_SIZE)
             .select('CourseID Amount Currency PaymentMethod PaidAt createdAt')
             .lean(),
         teacherIds.length
@@ -338,7 +355,21 @@ const getReports = async (options = {}) => {
             currency: order.Currency || 'VND',
             paymentMethod: order.PaymentMethod,
             paidAt: order.PaidAt || order.createdAt
-        }))
+        })),
+        pagination: {
+            popularCourses: {
+                page: popularCoursesPage,
+                pageSize: PAGE_SIZE,
+                total: popularCourseTotal,
+                totalPages: Math.ceil(popularCourseTotal / PAGE_SIZE)
+            },
+            recentPaidOrders: {
+                page: recentOrdersPage,
+                pageSize: PAGE_SIZE,
+                total: recentPaidOrderCount,
+                totalPages: Math.ceil(recentPaidOrderCount / PAGE_SIZE)
+            }
+        }
     };
 };
 

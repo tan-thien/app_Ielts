@@ -9,6 +9,7 @@ const submissionSchema = new mongoose.Schema({
     TaskType: { type: String, default: null },
     Prompt: { type: String, default: "" },
     AudioMimeType: { type: String, default: "" },
+    AIRequestID: { type: String, default: null },
     StartTime: { type: Date, default: Date.now },
     SubmitTime: { type: Date },
     Duration: { type: Number, default: 0 },
@@ -30,6 +31,11 @@ const submissionSchema = new mongoose.Schema({
     BandScore: { type: Number, default: 0 },
     IsPassed: { type: Boolean, default: false }
 }, { timestamps: true });
+
+submissionSchema.index(
+    { UserID: 1, AIRequestID: 1 },
+    { unique: true, partialFilterExpression: { AIRequestID: { $type: "string" } } }
+);
 
 module.exports = () => {
     const db = getDB_LMS();
