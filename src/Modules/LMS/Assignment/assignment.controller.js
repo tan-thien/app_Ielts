@@ -1,4 +1,13 @@
-const { createAssignment, updateAssignment, getAllAssignments, getCourseAssignments, getAssignmentById, deleteAssignment } = require('./assignment.service');
+const {
+    createAssignment,
+    updateAssignment,
+    getAllAssignments,
+    getCourseAssignments,
+    getReadingListeningPracticeAssignments,
+    getReadingListeningPracticeReview,
+    getAssignmentById,
+    deleteAssignment
+} = require('./assignment.service');
 
 const createAssignmentController = async (req, res) => {
     try {
@@ -46,6 +55,36 @@ const getCourseAssignmentsController = async (req, res) => {
     }
 };
 
+const getReadingListeningPracticeAssignmentsController = async (req, res) => {
+    try {
+        const assignments = await getReadingListeningPracticeAssignments(req.user.userId);
+        return res.status(200).json({
+            success: true,
+            message: 'Get Reading and Listening practice assignments successfully',
+            data: assignments
+        });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+const getReadingListeningPracticeReviewController = async (req, res) => {
+    try {
+        const review = await getReadingListeningPracticeReview(
+            req.params.assignmentId,
+            req.params.submissionId,
+            req.user.userId
+        );
+        return res.status(200).json({
+            success: true,
+            message: 'Get practice review successfully',
+            data: review
+        });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 const getAssignmentByIdController = async (req, res) => {
     try {
         const id = req.params.id;
@@ -66,4 +105,13 @@ const deleteAssignmentController = async (req, res) => {
     }
 };
 
-module.exports = { createAssignmentController, updateAssignmentController, getAssignmentController, getCourseAssignmentsController, getAssignmentByIdController, deleteAssignmentController };
+module.exports = {
+    createAssignmentController,
+    updateAssignmentController,
+    getAssignmentController,
+    getCourseAssignmentsController,
+    getReadingListeningPracticeAssignmentsController,
+    getReadingListeningPracticeReviewController,
+    getAssignmentByIdController,
+    deleteAssignmentController
+};

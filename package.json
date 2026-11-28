@@ -4,7 +4,7 @@
   "description": "A Node.js application for IELTS preparation.",
   "main": "src/server.js",
   "scripts": {
-    "test": "node --test test/ai.service.test.js",
+    "test": "node --test test/ai.service.test.js test/progress-analytics.service.test.js test/mistake-notebook.service.test.js test/speaking-conversation.service.test.js test/assignment.practice-center.test.js test/vocabulary.study.test.js test/vocabulary.lookup.test.js test/db.connections.test.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },

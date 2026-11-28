@@ -11,6 +11,8 @@ router.use('/submition',require('../Modules/LMS/Submission/submission.route'));
 router.use('/ai', require('../Modules/AI/ai.route'));
 router.use('/admin/management', require('../Modules/Admin/Management/management.routes'));
 router.use('/vocabulary', require('../Modules/Vocabulary/vocabulary.routes'));
+router.use('/mistake-notebook', require('../Modules/MistakeNotebook/mistake-notebook.route'));
+router.use('/progress-analytics', require('../Modules/ProgressAnalytics/progress-analytics.routes'));
 
 
 module.exports = router;

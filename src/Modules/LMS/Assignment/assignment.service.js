@@ -1,6 +1,10 @@
 const getAssignmentModel = require('./Assignment.model');
 const getUserModel = require('../../../Modules/auth/Account.model');
 const getLessonModel = require('../lesson/lesson.model');
+const getSubmissionModel = require('../Submission/submission.model');
+const orderService = require('../Order/order.service');
+
+const PRACTICE_SKILLS = ['Reading', 'Listening'];
 
 const isWithinAssignmentWindow = (assignment, now = new Date()) => {
     return (!assignment.StartDate || assignment.StartDate <= now) &&
@@ -156,6 +160,101 @@ const getCourseAssignments = async (courseId, now = new Date()) => {
         .map(hideAnswerKeys);
 };
 
+const getReadingListeningPracticeAssignments = async (currentUserId, now = new Date()) => {
+    const Assignment = getAssignmentModel();
+    const Lesson = getLessonModel();
+    const assignments = await Assignment.find({
+        IsDeleted: false,
+        IsOpen: true,
+        Skill: { $in: PRACTICE_SKILLS },
+        'Questions.0': { $exists: true },
+        $and: [
+            { $or: [{ StartDate: { $exists: false } }, { StartDate: null }, { StartDate: { $lte: now } }] },
+            { $or: [{ EndDate: { $exists: false } }, { EndDate: null }, { EndDate: { $gte: now } }] }
+        ]
+    }).sort({ createdAt: -1 });
+
+    const lessonIds = assignments
+        .filter(assignment => assignment.LessonID)
+        .map(assignment => assignment.LessonID);
+    const activeLessons = lessonIds.length
+        ? await Lesson.find({
+            _id: { $in: lessonIds },
+            IsDeleted: false,
+            Status: 'Active'
+        })
+        : [];
+    const activeLessonById = new Map(
+        activeLessons.map(lesson => [lesson._id.toString(), lesson])
+    );
+
+    const accessibleAssignments = [];
+    for (const assignment of assignments) {
+        const lesson = assignment.LessonID
+            ? activeLessonById.get(assignment.LessonID.toString())
+            : null;
+        if (assignment.LessonID && !lesson) continue;
+
+        const courseId = assignment.CourseID || lesson?.CourseID;
+        if (!courseId || !(await orderService.hasCourseAccess(courseId, currentUserId))) continue;
+        accessibleAssignments.push(hideAnswerKeys(assignment));
+    }
+
+    return accessibleAssignments;
+};
+
+const getReadingListeningPracticeReview = async (
+    assignmentId,
+    submissionId,
+    currentUserId
+) => {
+    const Assignment = getAssignmentModel();
+    const Submission = getSubmissionModel();
+    const assignment = await Assignment.findOne({
+        _id: assignmentId,
+        IsDeleted: false,
+        Skill: { $in: PRACTICE_SKILLS }
+    });
+
+    if (!assignment) throw new Error('Practice assignment not found');
+
+    let courseId = assignment.CourseID;
+    if (!courseId && assignment.LessonID) {
+        const lesson = await getLessonModel().findById(assignment.LessonID).select('CourseID');
+        courseId = lesson?.CourseID;
+    }
+    if (!courseId || !(await orderService.hasCourseAccess(courseId, currentUserId))) {
+        throw new Error('A successful course payment is required to review this assignment');
+    }
+
+    const submission = await Submission.findOne({
+        _id: submissionId,
+        AssignmentID: assignment._id,
+        UserID: currentUserId
+    });
+    if (!submission) throw new Error('Submission not found');
+    if (submission.Status === 'Doing') {
+        throw new Error('Submit this attempt before viewing the answer review');
+    }
+
+    const assignmentData = assignment.toObject ? assignment.toObject() : assignment;
+    const submissionData = submission.toObject ? submission.toObject() : submission;
+    return {
+        Questions: assignmentData.Questions || [],
+        Submission: {
+            _id: submissionData._id,
+            Status: submissionData.Status,
+            Answers: submissionData.Answers || [],
+            TotalScore: submissionData.TotalScore,
+            BandScore: submissionData.BandScore,
+            IsPassed: submissionData.IsPassed,
+            StartTime: submissionData.StartTime,
+            SubmitTime: submissionData.SubmitTime,
+            Duration: submissionData.Duration
+        }
+    };
+};
+
 const getAssignmentById = async (id, userRole) => {
     const Assignment = getAssignmentModel();
     const User = getUserModel();
@@ -208,6 +307,8 @@ module.exports = {
     updateAssignment,
     getAllAssignments,
     getCourseAssignments,
+    getReadingListeningPracticeAssignments,
+    getReadingListeningPracticeReview,
     getAssignmentById,
     deleteAssignment,
     isWithinAssignmentWindow
