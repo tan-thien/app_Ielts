@@ -1,11 +1,19 @@
 const service = require('./vocabulary.service');
+const generateService = require('./vocabulary.generate.service');
 
 const ok = (res, data) => res.json({ success: true, data });
 const fail = (res, error) => res.status(error.statusCode || (error.message?.includes('not found') ? 404 : 400)).json({ success: false, message: error.message || 'Vocabulary request failed' });
 const wrap = handler => async (req, res) => { try { await handler(req, res); } catch (error) { console.error('[Vocabulary]', error.message); fail(res, error); } };
 
 exports.listTopics = wrap(async (req, res) => ok(res, await service.listTopics({ includeInactive: req.user.role === 'admin' && req.query.includeInactive === 'true' })));
-exports.listWords = wrap(async (req, res) => ok(res, await service.listWords({ topicId: req.query.topicId, search: req.query.search, includeInactive: req.user.role === 'admin' && req.query.includeInactive === 'true' })));
+exports.listWords = wrap(async (req, res) => ok(res, await service.listWords({
+    topicId: req.query.topicId,
+    search: req.query.search,
+    includeInactive: req.user.role === 'admin' && req.query.includeInactive === 'true',
+    status: req.user.role === 'admin' ? req.query.status : '',
+    page: req.query.page,
+    limit: req.query.limit
+})));
 exports.dictionarySearch = wrap(async (req, res) => ok(res, await service.lookupWord(req.query.word)));
 exports.createTopic = wrap(async (req, res) => ok(res, await service.createTopic(req.body, req.user.userId)));
 exports.updateTopic = wrap(async (req, res) => ok(res, await service.updateTopic(req.params.topicId, req.body)));
@@ -21,3 +29,9 @@ exports.removeSaved = wrap(async (req, res) => ok(res, await service.removeSaved
 exports.translate = wrap(async (req, res) => ok(res, await service.translate(req.body)));
 exports.lookupWord = wrap(async (req, res) => ok(res, await service.lookupWord(req.body.word)));
 exports.bulkImport = wrap(async (req, res) => ok(res, await service.bulkImport(req.body.topicId, req.body.words)));
+exports.adminSummary = wrap(async (_req, res) => ok(res, await service.getAdminSummary()));
+exports.listGenerateJobs = wrap(async (req, res) => ok(res, await generateService.listJobs(req.user.userId, req.query.topicId)));
+exports.startVocabularyGenerate = wrap(async (req, res) => ok(res, await generateService.startGenerate(req.user.userId, req.body)));
+exports.runVocabularyGenerateBatch = wrap(async (req, res) => ok(res, await generateService.runNextBatch(req.user.userId, req.params.jobId)));
+exports.updateVocabularyGeneratePreview = wrap(async (req, res) => ok(res, await generateService.updatePreview(req.user.userId, req.params.jobId, req.params.previewKey, req.body)));
+exports.approveVocabularyGenerate = wrap(async (req, res) => ok(res, await generateService.approveBatch(req.user.userId, req.params.jobId, req.body.previewKeys)));

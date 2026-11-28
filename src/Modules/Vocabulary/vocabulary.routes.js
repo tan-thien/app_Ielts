@@ -1,5 +1,6 @@
 const express = require('express');
 const controller = require('./vocabulary.controller');
+const studyController = require('./vocabulary.study.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { authorize } = require('../../middlewares/authorize.middleware');
 
@@ -14,6 +15,14 @@ router.post('/saved/:wordId', authorize(['user', 'teacher', 'admin']), controlle
 router.put('/saved/:wordId', authorize(['user', 'teacher', 'admin']), controller.updateSaved);
 router.delete('/saved/:wordId', authorize(['user', 'teacher', 'admin']), controller.removeSaved);
 router.post('/translate', authorize(['user', 'teacher', 'admin']), controller.translate);
+router.get('/flashcards', authorize(['user', 'teacher', 'admin']), studyController.listSets);
+router.post('/flashcards', authorize(['user', 'teacher', 'admin']), studyController.createSet);
+router.put('/flashcards/:setId', authorize(['user', 'teacher', 'admin']), studyController.updateSet);
+router.delete('/flashcards/:setId', authorize(['user', 'teacher', 'admin']), studyController.deleteSet);
+router.get('/review', authorize(['user', 'teacher', 'admin']), studyController.listReviewCards);
+router.post('/review/:wordId', authorize(['user', 'teacher', 'admin']), studyController.reviewWord);
+router.get('/review/history', authorize(['user', 'teacher', 'admin']), studyController.listHistory);
+router.get('/admin/summary', authorize(['admin']), controller.adminSummary);
 router.post('/admin/lookup', authorize(['admin']), controller.lookupWord);
 router.post('/admin/import', authorize(['admin']), controller.bulkImport);
 router.post('/admin/topics', authorize(['admin']), controller.createTopic);
@@ -22,5 +31,10 @@ router.delete('/admin/topics/:topicId', authorize(['admin']), controller.deleteT
 router.post('/admin/words', authorize(['admin']), controller.createWord);
 router.put('/admin/words/:wordId', authorize(['admin']), controller.updateWord);
 router.delete('/admin/words/:wordId', authorize(['admin']), controller.deleteWord);
+router.get('/admin/generate/jobs', authorize(['admin']), controller.listGenerateJobs);
+router.post('/admin/generate/jobs', authorize(['admin']), controller.startVocabularyGenerate);
+router.post('/admin/generate/jobs/:jobId/batches', authorize(['admin']), controller.runVocabularyGenerateBatch);
+router.put('/admin/generate/jobs/:jobId/previews/:previewKey', authorize(['admin']), controller.updateVocabularyGeneratePreview);
+router.post('/admin/generate/jobs/:jobId/approve', authorize(['admin']), controller.approveVocabularyGenerate);
 
 module.exports = router;
